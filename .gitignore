@@ -1,0 +1,23 @@
+# Secrets — never commit these
+.env
+*.env
+secrets.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+venv/
+.venv/
+env/
+
+# Logs generated at runtime
+email_log.txt
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
