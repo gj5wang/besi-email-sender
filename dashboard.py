@@ -7,6 +7,8 @@ Then open:  http://localhost:5050
 import csv
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
@@ -284,6 +286,19 @@ def render_page(by_date, settings):
     font-weight: 600; align-items: center; gap: 4px;
   }}
 
+  .test-email-box {{
+    background: var(--green-light); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 20px; margin-top: 20px;
+  }}
+  .test-email-box h3 {{ font-size: 13px; font-weight: 600; color: var(--green-dark); margin-bottom: 8px; }}
+  .test-email-box p {{ font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }}
+  .test-result {{
+    display: none; margin-top: 12px; padding: 10px 14px;
+    border-radius: var(--radius); font-size: 12px; font-weight: 600;
+  }}
+  .test-result.success {{ background: #e8f5e9; color: #2e7d32; }}
+  .test-result.error   {{ background: #fdecea; color: #c0392b; }}
+
   footer {{
     text-align: center; color: var(--muted); font-size: 11px;
     padding: 24px 0 40px; border-top: 1px solid var(--border); margin-top: 8px;
@@ -415,6 +430,14 @@ def render_page(by_date, settings):
             <button class="btn btn-green" onclick="saveSettings()">Save Settings</button>
             <span class="saved-msg" id="savedMsg">✓ Saved</span>
           </div>
+
+          <div class="test-email-box">
+            <h3>Send Test Email</h3>
+            <p>Triggers the script right now against yesterday's data. The email will be sent to the recipient above.</p>
+            <button class="btn btn-outline" id="testBtn" onclick="sendTestEmail()">Send Test Email Now</button>
+            <div class="test-result" id="testResult"></div>
+          </div>
+
         </div>
       </div>
 
@@ -549,6 +572,31 @@ function saveSettings() {{
   }});
 }}
 
+// ── Test email ──────────────────────────────────────────────────────────────
+function sendTestEmail() {{
+  const btn = document.getElementById('testBtn');
+  const res = document.getElementById('testResult');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  res.style.display = 'none';
+  fetch('/send-test', {{ method: 'POST' }})
+    .then(r => r.json())
+    .then(d => {{
+      res.style.display = 'block';
+      res.className = 'test-result ' + (d.ok ? 'success' : 'error');
+      res.textContent = d.message;
+      btn.disabled = false;
+      btn.textContent = 'Send Test Email Now';
+    }})
+    .catch(() => {{
+      res.style.display = 'block';
+      res.className = 'test-result error';
+      res.textContent = 'Request failed — is the server running?';
+      btn.disabled = false;
+      btn.textContent = 'Send Test Email Now';
+    }});
+}}
+
 // ── Init ────────────────────────────────────────────────────────────────────
 const dates = Object.keys(DATA).sort().reverse();
 if (dates.length) selectDate(dates[0]);
@@ -570,6 +618,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html)
 
+    def send_json(self, data, status=200):
+        resp = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(resp)))
+        self.end_headers()
+        self.wfile.write(resp)
+
     def do_POST(self):
         if self.path == "/save-settings":
             length = int(self.headers.get("Content-Length", 0))
@@ -578,12 +634,22 @@ class Handler(BaseHTTPRequestHandler):
             s      = load_settings()
             s.update(data)
             save_settings(s)
-            resp = json.dumps({"ok": True}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(resp)))
-            self.end_headers()
-            self.wfile.write(resp)
+            self.send_json({"ok": True})
+
+        elif self.path == "/send-test":
+            script = BASE_DIR / "send_email.py"
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script)],
+                    capture_output=True, text=True, timeout=30
+                )
+                output = (result.stdout or result.stderr or "").strip()
+                ok = result.returncode == 0 and "ERROR" not in output.upper()
+                self.send_json({"ok": ok, "message": output or "Script ran with no output."})
+            except subprocess.TimeoutExpired:
+                self.send_json({"ok": False, "message": "Script timed out after 30 seconds."})
+            except Exception as e:
+                self.send_json({"ok": False, "message": str(e)})
 
     def log_message(self, *args): pass
 
