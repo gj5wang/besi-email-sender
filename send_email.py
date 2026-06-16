@@ -18,7 +18,7 @@ from pathlib import Path
 
 # ── Configuration ────────────────────────────────────────────────────────────
 CSV_PATH      = Path(__file__).parent / "Timecards.csv"
-SENDER_EMAIL  = "gloriatesting8@gmail.com"
+SENDER_EMAIL  = "gloriatesting8@gmail.com" #the testing email
 # Set GMAIL_APP_PASSWORD as an environment variable, or paste it below.
 APP_PASSWORD  = os.environ.get("GMAIL_APP_PASSWORD", "YOUR_APP_PASSWORD_HERE")
 RECIPIENT     = "Yan.Fikh@besi.ca"
@@ -61,7 +61,7 @@ def parse_date(value: str) -> date | None:
 def load_missing_cost_codes(target_date: date) -> list[dict]:
     """Return a list of worker records missing a cost code on target_date."""
     missing = []
-    seen = set()  # deduplicate by (name, date)
+    seen = set()  # deduplicate by (name, date, project)
 
     with open(CSV_PATH, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
@@ -80,7 +80,7 @@ def load_missing_cost_codes(target_date: date) -> list[dict]:
             name    = row[NAME_COL].strip()
             emp_id  = row[ID_COL].strip()
             project = row[PROJECT_COL].strip()
-            key     = (name, str(clock_in_date))
+            key     = (name, str(clock_in_date), project)
 
             if key not in seen:
                 seen.add(key)
